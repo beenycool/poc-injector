@@ -49,7 +49,7 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
     printf("[PAYLOAD] JNI_GetCreatedJavaVMs resolved at 0x%p\n\n",
            (void*)jvm.JNI_GetCreatedJavaVMs);
 
-    JavaVM* vm   = nullptr;
+    JavaVM vm   = nullptr;
     jsize   count = 0;
 
     for (int attempt = 0; attempt < 60; ++attempt) {
@@ -75,8 +75,8 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
 
     printf("[PAYLOAD] JavaVM* = 0x%p\n\n", vm);
 
-    JNIEnv* env = nullptr;
-    jint attach_rc = vm->functions->AttachCurrentThread(vm, &env, nullptr);
+    JNIEnv env = nullptr;
+    jint attach_rc = vm->functions->AttachCurrentThread(&vm, &env, nullptr);
     if (attach_rc != 0) {
         printf("[PAYLOAD] AttachCurrentThread FAILED with rc=%d\n", (int)attach_rc);
         fflush(stdout);

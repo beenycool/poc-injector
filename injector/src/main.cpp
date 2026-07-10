@@ -1,5 +1,6 @@
 #include "target.hpp"
 #include "inject.hpp"
+#include "error.hpp"
 
 #include <cstdio>
 #include <cstdlib>
