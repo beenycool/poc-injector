@@ -10,7 +10,7 @@ add_library(mcpayload SHARED
 
 target_include_directories(mcpayload PRIVATE
     src
-    ${CMAKE_SOURCE_DIR}/ghidra-mcp/fun-doc
+    ${CMAKE_SOURCE_DIR}/include
 )
 
 target_link_libraries(mcpayload PRIVATE
