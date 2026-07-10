@@ -25,12 +25,10 @@ static void log_debug(const char* fmt, ...) {
     va_end(args);
 
     char fullPath[MAX_PATH] = "mcpayload_debug.log";
-    char tmp[MAX_PATH] = {};
-    if (GetTempPathA(MAX_PATH, tmp) && tmp[0] != '\0') {
-        size_t len = strlen(tmp);
-        const char* sep = (len > 0 && tmp[len - 1] != '\\') ? "\\" : "";
-        snprintf(fullPath, sizeof(fullPath), "%s%smcpayload_debug.log",
-                 tmp, sep);
+    const char* profile = getenv("USERPROFILE");
+    if (profile && profile[0] != '\0') {
+        snprintf(fullPath, sizeof(fullPath),
+                 "%s\\Downloads\\mcpayload_debug.log", profile);
     }
 
     FILE* f = nullptr;
