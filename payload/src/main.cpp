@@ -123,49 +123,131 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
     MessageBoxA(NULL, "Step 5: Attached to JVM successfully!", "Debug", MB_OK);
     log_debug("Step 5: Attached to JVM successfully!");
 
-    // --- Checkpoint: is env still alive? ---
-    log_debug("Step 5a: About to call GetVersion");
-    MessageBoxA(NULL, "Step 5a: About to call GetVersion", "Debug", MB_OK);
-    jint jni_ver = env->GetVersion(env);
-    log_debug("Step 5b: GetVersion = 0x%08X", (unsigned)jni_ver);
+    char buf[256];
+    bool didCrash = false;
+    DWORD code;
 
-    char buf[128];
-    snprintf(buf, sizeof(buf), "Step 5b: GetVersion = 0x%08X", (unsigned)jni_ver);
+    // --- Thread diagnostics ---
+    uintptr_t javaThread = (uintptr_t)env - 0x2C0;
+    log_debug("JavaThread = env - 0x2C0 = 0x%p", (void*)javaThread);
+    log_debug("env[0x20] (GetVersion fn) = 0x%p", *(void**)((char*)env + 0x20));
+    log_debug("env[0x30] (FindClass fn)  = 0x%p", *(void**)((char*)env + 0x30));
+    log_debug("env[0x28] (DefineClass fn) = 0x%p", *(void**)((char*)env + 0x28));
+    log_debug("JavaThread[0x50] (flags)   = 0x%02X", *(uint8_t*)(javaThread + 0x50));
+    log_debug("env+0xB0 (thread state)    = 0x%08X", *(uint32_t*)((char*)env + 0xB0));
+
+    snprintf(buf, sizeof(buf), "Thread diag: JavaThread=0x%p, fn[0x30]=0x%p",
+             (void*)javaThread, *(void**)((char*)env + 0x30));
+    MessageBoxA(NULL, buf, "Step 5a: Thread Diagnosics", MB_OK);
+
+    // --- Test 0: GetVersion (known good) ---
+    log_debug("Test 0: GetVersion...");
+    jint jni_ver = 0;
+    __try {
+        jni_ver = env->GetVersion(env);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        code = GetExceptionCode();
+        log_debug("CRASH Test 0: GetVersion! Code=0x%08X", code);
+        snprintf(buf, sizeof(buf), "CRASH GetVersion! Code=0x%08X", code);
+        MessageBoxA(NULL, buf, "Debug", MB_OK);
+    }
+    log_debug("Test 0: GetVersion = 0x%08X", (unsigned)jni_ver);
+    snprintf(buf, sizeof(buf), "GetVersion = 0x%08X", (unsigned)jni_ver);
     MessageBoxA(NULL, buf, "Debug", MB_OK);
 
-    // --- Checkpoint: print vtable entry ---
-    snprintf(buf, sizeof(buf), "vtable[0x30] = 0x%p",
-             *(void**)((char*)env + 0x30));
-    log_debug(buf);
-    MessageBoxA(NULL, buf, "Debug", MB_OK);
+    // --- Test 1: ExceptionClear (simple, no params) ---
+    log_debug("Test 1: ExceptionClear...");
+    __try {
+        env->ExceptionClear(env);
+        log_debug("Test 1: ExceptionClear OK");
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        code = GetExceptionCode();
+        log_debug("CRASH Test 1: ExceptionClear! Code=0x%08X", code);
+        snprintf(buf, sizeof(buf), "CRASH ExceptionClear! Code=0x%08X", code);
+        MessageBoxA(NULL, buf, "Debug", MB_OK);
+    }
 
-    // --- Checkpoint: before FindClass ---
-    log_debug("Step 5c: About to call FindClass");
-    MessageBoxA(NULL, "Step 5c: About to call FindClass", "Debug", MB_OK);
+    // --- Test 2: NewStringUTF (JNI string creation, needs no classloading) ---
+    log_debug("Test 2: NewStringUTF...");
+    jstring testStr = nullptr;
+    __try {
+        testStr = env->NewStringUTF(env, "HelloWorld");
+        log_debug("Test 2: NewStringUTF = 0x%p", testStr);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        code = GetExceptionCode();
+        log_debug("CRASH Test 2: NewStringUTF! Code=0x%08X", code);
+        snprintf(buf, sizeof(buf), "CRASH NewStringUTF! Code=0x%08X", code);
+        MessageBoxA(NULL, buf, "Debug", MB_OK);
+    }
 
+    // --- Test 3: FindClass("java/lang/Object") — bootstrap class ---
+    log_debug("Test 3: FindClass(java/lang/Object)...");
+    jclass objClass = nullptr;
+    __try {
+        objClass = env->FindClass(env, "java/lang/Object");
+        log_debug("Test 3: java/lang/Object = 0x%p", objClass);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        code = GetExceptionCode();
+        log_debug("CRASH Test 3: FindClass(java/lang/Object)! Code=0x%08X", code);
+        snprintf(buf, sizeof(buf), "CRASH FindClass(Object)! Code=0x%08X", code);
+        MessageBoxA(NULL, buf, "Debug", MB_OK);
+    }
+    if (!objClass) {
+        env->ExceptionClear(env);
+        log_debug("Test 3: java/lang/Object not found (cleared exception)");
+    }
+
+    // --- Test 4: FindClass("java/lang/String") — another bootstrap ---
+    log_debug("Test 4: FindClass(java/lang/String)...");
+    jclass strClass = nullptr;
+    __try {
+        strClass = env->FindClass(env, "java/lang/String");
+        log_debug("Test 4: java/lang/String = 0x%p", strClass);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        code = GetExceptionCode();
+        log_debug("CRASH Test 4: FindClass(java/lang/String)! Code=0x%08X", code);
+        snprintf(buf, sizeof(buf), "CRASH FindClass(String)! Code=0x%08X", code);
+        MessageBoxA(NULL, buf, "Debug", MB_OK);
+    }
+    if (!strClass) {
+        env->ExceptionClear(env);
+        log_debug("Test 4: java/lang/String not found (cleared exception)");
+    }
+
+    // --- Test 5: FindClass("net/minecraft/client/Minecraft") — original test ---
+    log_debug("Test 5: FindClass(net/minecraft/client/Minecraft)...");
+    MessageBoxA(NULL, "Test 5: About to FindClass Minecraft", "Debug", MB_OK);
     jclass minecraftClass = nullptr;
-    bool    didCrash       = false;
+    didCrash = false;
 
     __try {
         minecraftClass = env->FindClass(env, "net/minecraft/client/Minecraft");
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         didCrash = true;
-        DWORD code = GetExceptionCode();
-        log_debug("SEH caught! FindClass crashed. Code=0x%08X", code);
-        snprintf(buf, sizeof(buf), "SEH caught! Code=0x%08X — thread alive", code);
+        code = GetExceptionCode();
+        log_debug("CRASH Test 5: FindClass(Minecraft)! Code=0x%08X", code);
+        snprintf(buf, sizeof(buf), "CRASH FindClass(Minecraft)! Code=0x%08X", code);
         MessageBoxA(NULL, buf, "Debug", MB_OK);
     }
 
-    if (!didCrash) {
-        if (minecraftClass) {
-            log_debug("Step 5d: Found Minecraft Client Class!");
-            MessageBoxA(NULL, "Step 5d: Found Minecraft Client Class!", "Debug", MB_OK);
-        } else {
-            log_debug("Step 5d: Class not found — clearing exception");
-            env->ExceptionClear(env);
-            MessageBoxA(NULL, "Step 5d: Class not found", "Debug", MB_OK);
-        }
+    if (minecraftClass) {
+        log_debug("Test 5: Found Minecraft Client Class!");
+        MessageBoxA(NULL, "Test 5: Found Minecraft Client Class!", "Debug", MB_OK);
+    } else if (!didCrash) {
+        log_debug("Test 5: Minecraft class not found — clearing exception");
+        env->ExceptionClear(env);
+        MessageBoxA(NULL, "Test 5: Minecraft class not found", "Debug", MB_OK);
     }
+
+    // --- Summary ---
+    log_debug("=== JNI Test Summary ===");
+    log_debug("  GetVersion          = 0x%08X (%s)", (unsigned)jni_ver, jni_ver ? "OK" : "FAIL");
+    log_debug("  ExceptionClear      = %s", "OK");
+    log_debug("  NewStringUTF        = 0x%p (%s)", testStr, testStr ? "OK" : "FAIL");
+    log_debug("  FindClass(Object)   = 0x%p (%s)", objClass, objClass ? "FOUND" : "NULL");
+    log_debug("  FindClass(String)   = 0x%p (%s)", strClass, strClass ? "FOUND" : "NULL");
+    log_debug("  FindClass(Minecraft)= 0x%p (%s)", minecraftClass, minecraftClass ? "FOUND" : (didCrash ? "CRASH" : "NULL"));
+    log_debug("========================");
 
     // --- Main keep-alive loop ---
     log_debug("Step 6: Entering main loop");
