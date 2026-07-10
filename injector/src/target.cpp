@@ -22,10 +22,10 @@ std::optional<find_target_result> find_process_by_name(
         return std::nullopt;
     }
 
-    PROCESSENTRY32A pe = {};
+    PROCESSENTRY32 pe = {};
     pe.dwSize = sizeof(pe);
 
-    if (!Process32FirstA(snapshot, &pe)) {
+    if (!Process32First(snapshot, &pe)) {
         log_error("Process32First");
         CloseHandle(snapshot);
         return std::nullopt;
@@ -40,7 +40,7 @@ std::optional<find_target_result> find_process_by_name(
                      pe.szExeFile, pe.th32ProcessID);
             break;
         }
-    } while (Process32NextA(snapshot, &pe));
+    } while (Process32Next(snapshot, &pe));
 
     if (!found) {
         DWORD last_err = GetLastError();
