@@ -634,6 +634,11 @@ struct JNINativeInterface_ {
     JNI_GetModule_t                     GetModule;
 };
 
+// JNIEnv_ — opaque struct whose first members match JNINativeInterface_
+// HotSpot stores the function table directly at offset 0.
+struct JNIEnv_ : JNINativeInterface_ {
+};
+
 // ---------------------------------------------------------------------------
 // Known internal globals (RVAs relative to image base 0x180000000)
 //
@@ -694,7 +699,7 @@ struct Offsets {
 // ---------------------------------------------------------------------------
 struct JvmDll {
     // Resolved at init — GetProcAddress
-    jint (JNICALL *JNI_GetCreatedJavaVMs)(JavaVM**, jsize, jsize*) = nullptr;
+    jint (JNICALL *JNI_GetCreatedJavaVMs)(JavaVM*, jsize, jsize*) = nullptr;
 
     uintptr_t base = 0;        // runtime base address of jvm.dll
     bool      ok   = false;

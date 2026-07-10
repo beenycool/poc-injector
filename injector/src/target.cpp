@@ -1,6 +1,7 @@
 #include "target.hpp"
 #include "error.hpp"
 #include <cstdio>
+#include <tlhelp32.h>
 
 namespace inject {
 
