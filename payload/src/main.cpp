@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <windows.h>
 
 #include "jni_structures.h"
@@ -23,8 +24,18 @@ static void log_debug(const char* fmt, ...) {
     vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
 
+    char fullPath[MAX_PATH] = "mcpayload_debug.log";
+    char tmp[MAX_PATH] = {};
+    if (GetTempPathA(MAX_PATH, tmp) && tmp[0] != '\0') {
+        size_t len = strlen(tmp);
+        const char* sep = (len > 0 && tmp[len - 1] != '\\') ? "\\" : "";
+        snprintf(fullPath, sizeof(fullPath), "%s%smcpayload_debug.log",
+                 tmp, sep);
+    }
+
     FILE* f = nullptr;
-    if (fopen_s(&f, "mcpayload_debug.log", "a") == 0 && f) {
+    if (fopen_s(&f, fullPath, "a") == 0 && f) {
+        setvbuf(f, NULL, _IONBF, 0);
         DWORD ms = GetTickCount();
         fprintf(f, "[%lu] %s\n", ms, msg);
         fclose(f);
