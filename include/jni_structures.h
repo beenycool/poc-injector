@@ -12,6 +12,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdarg>
 #include <windows.h>
 
 // ---------------------------------------------------------------------------
@@ -27,6 +28,13 @@ typedef float    jfloat;
 typedef double   jdouble;
 typedef jint     jsize;
 
+// --- JNI calling convention ---
+#ifdef _WIN32
+#define JNICALL __stdcall
+#else
+#define JNICALL
+#endif
+
 // --- Forward declares ---
 struct JNIEnv_;
 struct JavaVM_;
@@ -35,6 +43,56 @@ struct JNINativeInterface_;
 
 typedef JNIEnv_*  JNIEnv;
 typedef JavaVM_*  JavaVM;
+
+// --- Forward declares for opaque JNI reference types ---
+struct _jobject;
+struct _jclass;
+struct _jmethodID;
+struct _jfieldID;
+struct _jthrowable;
+struct _jstring;
+struct _jarray;
+
+typedef _jobject*    jobject;
+typedef _jclass*     jclass;
+typedef _jmethodID*  jmethodID;
+typedef _jfieldID*   jfieldID;
+typedef _jthrowable* jthrowable;
+typedef _jstring*    jstring;
+typedef _jarray*     jarray;
+
+// --- JNI array wrappers ---
+typedef jarray jobjectArray;
+typedef jarray jbooleanArray;
+typedef jarray jbyteArray;
+typedef jarray jcharArray;
+typedef jarray jshortArray;
+typedef jarray jintArray;
+typedef jarray jlongArray;
+typedef jarray jfloatArray;
+typedef jarray jdoubleArray;
+
+// --- Other JNI types ---
+typedef _jobject* jweak;
+typedef jint      jobjectRefType;
+
+typedef struct {
+    const char* name;
+    const char* signature;
+    void*       fnPtr;
+} JNINativeMethod;
+
+typedef union jvalue {
+    jboolean  z;
+    jbyte     b;
+    jchar     c;
+    jshort    s;
+    jint      i;
+    jlong     j;
+    jfloat    f;
+    jdouble   d;
+    jobject   l;
+} jvalue;
 
 // ---------------------------------------------------------------------------
 // JNIInvokeInterface_ — what JavaVM->functions points to
