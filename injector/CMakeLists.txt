@@ -12,11 +12,10 @@ add_executable(mcinjector
 
 target_include_directories(mcinjector PRIVATE src)
 
-# Ensure tlhelp32 is linked explicitly
+# Toolhelp32 APIs are part of kernel32.lib on modern Windows SDKs
 target_link_libraries(mcinjector PRIVATE
     kernel32
     advapi32
-    tlhelp32
 )
 
 # Optimize for small binary
