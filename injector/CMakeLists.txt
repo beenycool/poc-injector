@@ -12,10 +12,11 @@ add_executable(mcinjector
 
 target_include_directories(mcinjector PRIVATE src)
 
-# Link windows libraries explicitly (though implicit via MSVC)
+# Ensure tlhelp32 is linked explicitly
 target_link_libraries(mcinjector PRIVATE
     kernel32
     advapi32
+    tlhelp32
 )
 
 # Optimize for small binary
