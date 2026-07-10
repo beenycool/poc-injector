@@ -17,12 +17,16 @@ static void dbg_print(const char* fmt, ...) {
 }
 
 static DWORD WINAPI payload_thread(LPVOID /*param*/) {
+    MessageBoxA(NULL, "Step 1: DLL thread started and running!", "Debug", MB_OK);
+
     dbg_print("[PAYLOAD] Thread started, allocating console...");
 
     if (!AllocConsole()) {
+        MessageBoxA(NULL, "Step 2: AllocConsole FAILED!", "Debug", MB_OK);
         dbg_print("[PAYLOAD] AllocConsole failed (GLE=%lu)", GetLastError());
         return 1;
     }
+    MessageBoxA(NULL, "Step 2: AllocConsole OK", "Debug", MB_OK);
 
     FILE* f_out = nullptr;
     FILE* f_err = nullptr;
@@ -34,17 +38,18 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
         SetConsoleTitleA("Minecraft Payload — Debug Console");
     }
 
-    printf("========================================\n");
-    printf(" Minecraft Payload DLL — v0.1.0\n");
-    printf("========================================\n\n");
+    MessageBoxA(NULL, "Step 3: About to look up jvm.dll...", "Debug", MB_OK);
 
     JvmDll jvm;
     if (!jvm.init()) {
+        MessageBoxA(NULL, "Step 3: jvm.dll NOT FOUND in process!", "Debug", MB_OK);
         printf("[PAYLOAD] FATAL: Cannot locate jvm.dll via GetModuleHandleA.\n");
         printf("          Is this process actually running a JVM?\n");
         fflush(stdout);
         return 1;
     }
+    MessageBoxA(NULL, "Step 3: jvm.dll FOUND — proceeding to JNI_GetCreatedJavaVMs", "Debug", MB_OK);
+
     printf("[PAYLOAD] jvm.dll found at base 0x%p\n", (void*)jvm.base);
     printf("[PAYLOAD] JNI_GetCreatedJavaVMs resolved at 0x%p\n\n",
            (void*)jvm.JNI_GetCreatedJavaVMs);
@@ -73,6 +78,8 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
         return 1;
     }
 
+    MessageBoxA(NULL, "Step 4: Got JavaVM — about to AttachCurrentThread", "Debug", MB_OK);
+
     printf("[PAYLOAD] JavaVM* = 0x%p\n\n", vm);
 
     JNIEnv env = nullptr;
@@ -86,6 +93,8 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
     printf("[PAYLOAD] AttachCurrentThread — SUCCESS\n");
     printf("[PAYLOAD] JNIEnv* = 0x%p\n", env);
 
+    MessageBoxA(NULL, "Step 5: Attached to JVM successfully!", "Debug", MB_OK);
+
     jint jni_ver = env->GetVersion(env);
     printf("[PAYLOAD] JNI version: 0x%08X (%d.%d)\n",
            (unsigned)jni_ver, (jni_ver >> 16) & 0xFF, jni_ver & 0xFFFF);
@@ -95,6 +104,8 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
     printf("========================================\n");
 
     fflush(stdout);
+
+    MessageBoxA(NULL, "Step 6: Payload thread exiting cleanly", "Debug", MB_OK);
 
     return 0;
 }
