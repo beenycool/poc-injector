@@ -16,6 +16,24 @@ static void dbg_print(const char* fmt, ...) {
     OutputDebugStringA("\n");
 }
 
+static void log_debug(const char* fmt, ...) {
+    char msg[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, args);
+    va_end(args);
+
+    FILE* f = nullptr;
+    if (fopen_s(&f, "mcpayload_debug.log", "a") == 0 && f) {
+        DWORD ms = GetTickCount();
+        fprintf(f, "[%lu] %s\n", ms, msg);
+        fclose(f);
+    }
+
+    OutputDebugStringA(msg);
+    OutputDebugStringA("\n");
+}
+
 static DWORD WINAPI payload_thread(LPVOID /*param*/) {
     MessageBoxA(NULL, "Step 1: DLL thread started and running!", "Debug", MB_OK);
 
@@ -94,17 +112,28 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
     printf("[PAYLOAD] JNIEnv* = 0x%p\n", env);
 
     MessageBoxA(NULL, "Step 5: Attached to JVM successfully!", "Debug", MB_OK);
+    log_debug("Step 5: Attached to JVM successfully!");
 
-    // --- Diagnostic: verify env validity & vtable entry ---
+    // --- Checkpoint: is env still alive? ---
+    log_debug("Step 5a: About to call GetVersion");
+    MessageBoxA(NULL, "Step 5a: About to call GetVersion", "Debug", MB_OK);
     jint jni_ver = env->GetVersion(env);
-    printf("[PAYLOAD] GetVersion = 0x%08X — env still valid\n", (unsigned)jni_ver);
-    printf("[PAYLOAD] vtable[0x30] (FindClass) = 0x%p\n",
-           *(void**)((char*)env + 0x30));
-    fflush(stdout);
+    log_debug("Step 5b: GetVersion = 0x%08X", (unsigned)jni_ver);
 
-    MessageBoxA(NULL, "Step 5b: About to call FindClass", "Debug", MB_OK);
+    char buf[128];
+    snprintf(buf, sizeof(buf), "Step 5b: GetVersion = 0x%08X", (unsigned)jni_ver);
+    MessageBoxA(NULL, buf, "Debug", MB_OK);
 
-    // --- SEH-protected FindClass ---
+    // --- Checkpoint: print vtable entry ---
+    snprintf(buf, sizeof(buf), "vtable[0x30] = 0x%p",
+             *(void**)((char*)env + 0x30));
+    log_debug(buf);
+    MessageBoxA(NULL, buf, "Debug", MB_OK);
+
+    // --- Checkpoint: before FindClass ---
+    log_debug("Step 5c: About to call FindClass");
+    MessageBoxA(NULL, "Step 5c: About to call FindClass", "Debug", MB_OK);
+
     jclass minecraftClass = nullptr;
     bool    didCrash       = false;
 
@@ -113,41 +142,38 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         didCrash = true;
         DWORD code = GetExceptionCode();
-        printf("[PAYLOAD] *** SEH: FindClass CRASHED  Code=0x%08X ***\n", code);
-        printf("[PAYLOAD] Thread stays alive — press END to detach.\n");
-        fflush(stdout);
-        MessageBoxA(NULL, "FindClass crashed (SEH caught). Thread alive — press END.",
-                    "Debug", MB_OK);
+        log_debug("SEH caught! FindClass crashed. Code=0x%08X", code);
+        snprintf(buf, sizeof(buf), "SEH caught! Code=0x%08X — thread alive", code);
+        MessageBoxA(NULL, buf, "Debug", MB_OK);
     }
 
     if (!didCrash) {
         if (minecraftClass) {
-            printf("[PAYLOAD] FindClass SUCCESS\n"); fflush(stdout);
-            MessageBoxA(NULL, "Found Minecraft Client Class!", "Debug", MB_OK);
+            log_debug("Step 5d: Found Minecraft Client Class!");
+            MessageBoxA(NULL, "Step 5d: Found Minecraft Client Class!", "Debug", MB_OK);
         } else {
-            printf("[PAYLOAD] FindClass NULL — clearing exception\n"); fflush(stdout);
+            log_debug("Step 5d: Class not found — clearing exception");
             env->ExceptionClear(env);
-            MessageBoxA(NULL, "Class not found.", "Debug", MB_OK);
+            MessageBoxA(NULL, "Step 5d: Class not found", "Debug", MB_OK);
         }
     }
 
     // --- Main keep-alive loop ---
-    printf("[PAYLOAD] Main loop active (press END to exit)\n"); fflush(stdout);
+    log_debug("Step 6: Entering main loop");
     MessageBoxA(NULL, "Step 6: Main loop. Press END to detach.", "Debug", MB_OK);
-
     while (!GetAsyncKeyState(VK_END)) {
         Sleep(100);
     }
 
     // --- Clean shutdown ---
-    printf("[PAYLOAD] Detaching from JVM...\n"); fflush(stdout);
+    log_debug("Step 7: Detaching from JVM...");
     MessageBoxA(NULL, "Step 7: Detaching...", "Debug", MB_OK);
-
     jint detach_rc = vm->functions->DetachCurrentThread(&vm);
-    printf("[PAYLOAD] DetachCurrentThread rc=%d\n", (int)detach_rc); fflush(stdout);
+    log_debug("DetachCurrentThread rc=%d", (int)detach_rc);
 
-    MessageBoxA(NULL, "Safely detached. Thread exiting cleanly.", "Debug", MB_OK);
-    fflush(stdout);
+    snprintf(buf, sizeof(buf), "Detach rc=%d. Thread exiting.", (int)detach_rc);
+    MessageBoxA(NULL, buf, "Debug", MB_OK);
+    log_debug("Payload thread exiting cleanly");
     return 0;
 }
 
