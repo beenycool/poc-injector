@@ -95,18 +95,32 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
 
     MessageBoxA(NULL, "Step 5: Attached to JVM successfully!", "Debug", MB_OK);
 
-    jint jni_ver = env->GetVersion(env);
-    printf("[PAYLOAD] JNI version: 0x%08X (%d.%d)\n",
-           (unsigned)jni_ver, (jni_ver >> 16) & 0xFF, jni_ver & 0xFFFF);
+    printf("[PAYLOAD] Entering main execution loop (press END key to exit)\n");
+    MessageBoxA(NULL, "Step 6: Entering main loop. Press END to detach.", "Debug", MB_OK);
 
-    printf("\n[PAYLOAD] JNI handshake complete — thread attached to JVM.\n");
-    printf("[PAYLOAD] Ready for hook deployment.\n");
-    printf("========================================\n");
+    while (!GetAsyncKeyState(VK_END)) {
+        Sleep(500);
 
+        jclass minecraftClass = env->FindClass(env, "net/minecraft/client/Minecraft");
+        if (minecraftClass) {
+            printf("[PAYLOAD] FindClass SUCCESS — found net/minecraft/client/Minecraft\n");
+            MessageBoxA(NULL, "Found Minecraft Client Class!", "Debug", MB_OK);
+            break;
+        }
+
+        printf("[PAYLOAD] FindClass returned NULL. Clearing exception.\n");
+        env->ExceptionClear(env);
+        MessageBoxA(NULL, "Class not found.", "Debug", MB_OK);
+    }
+
+    printf("\n[PAYLOAD] END key pressed — detaching from JVM...\n");
+    MessageBoxA(NULL, "Step 7: Detaching from JVM...", "Debug", MB_OK);
+
+    jint detach_rc = vm->functions->DetachCurrentThread(&vm);
+    printf("[PAYLOAD] DetachCurrentThread rc=%d\n", (int)detach_rc);
+
+    MessageBoxA(NULL, "Payload thread exiting cleanly", "Debug", MB_OK);
     fflush(stdout);
-
-    MessageBoxA(NULL, "Step 6: Payload thread exiting cleanly", "Debug", MB_OK);
-
     return 0;
 }
 
