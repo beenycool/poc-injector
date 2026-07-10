@@ -1,10 +1,9 @@
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
+#define NOMINMAX
 #include <windows.h>
 #include <tlhelp32.h>
-#undef WIN32_LEAN_AND_MEAN
 #include <cstdio>
+#include <string>
+#include <optional>
 #include "target.hpp"
 #include "error.hpp"
 
