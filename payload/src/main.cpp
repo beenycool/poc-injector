@@ -95,31 +95,58 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
 
     MessageBoxA(NULL, "Step 5: Attached to JVM successfully!", "Debug", MB_OK);
 
-    printf("[PAYLOAD] Entering main execution loop (press END key to exit)\n");
-    MessageBoxA(NULL, "Step 6: Entering main loop. Press END to detach.", "Debug", MB_OK);
+    // --- Diagnostic: verify env validity & vtable entry ---
+    jint jni_ver = env->GetVersion(env);
+    printf("[PAYLOAD] GetVersion = 0x%08X — env still valid\n", (unsigned)jni_ver);
+    printf("[PAYLOAD] vtable[0x30] (FindClass) = 0x%p\n",
+           *(void**)((char*)env + 0x30));
+    fflush(stdout);
 
-    while (!GetAsyncKeyState(VK_END)) {
-        Sleep(500);
+    MessageBoxA(NULL, "Step 5b: About to call FindClass", "Debug", MB_OK);
 
-        jclass minecraftClass = env->FindClass(env, "net/minecraft/client/Minecraft");
-        if (minecraftClass) {
-            printf("[PAYLOAD] FindClass SUCCESS — found net/minecraft/client/Minecraft\n");
-            MessageBoxA(NULL, "Found Minecraft Client Class!", "Debug", MB_OK);
-            break;
-        }
+    // --- SEH-protected FindClass ---
+    jclass minecraftClass = nullptr;
+    bool    didCrash       = false;
 
-        printf("[PAYLOAD] FindClass returned NULL. Clearing exception.\n");
-        env->ExceptionClear(env);
-        MessageBoxA(NULL, "Class not found.", "Debug", MB_OK);
+    __try {
+        minecraftClass = env->FindClass(env, "net/minecraft/client/Minecraft");
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        didCrash = true;
+        DWORD code = GetExceptionCode();
+        printf("[PAYLOAD] *** SEH: FindClass CRASHED  Code=0x%08X ***\n", code);
+        printf("[PAYLOAD] Thread stays alive — press END to detach.\n");
+        fflush(stdout);
+        MessageBoxA(NULL, "FindClass crashed (SEH caught). Thread alive — press END.",
+                    "Debug", MB_OK);
     }
 
-    printf("\n[PAYLOAD] END key pressed — detaching from JVM...\n");
-    MessageBoxA(NULL, "Step 7: Detaching from JVM...", "Debug", MB_OK);
+    if (!didCrash) {
+        if (minecraftClass) {
+            printf("[PAYLOAD] FindClass SUCCESS\n"); fflush(stdout);
+            MessageBoxA(NULL, "Found Minecraft Client Class!", "Debug", MB_OK);
+        } else {
+            printf("[PAYLOAD] FindClass NULL — clearing exception\n"); fflush(stdout);
+            env->ExceptionClear(env);
+            MessageBoxA(NULL, "Class not found.", "Debug", MB_OK);
+        }
+    }
+
+    // --- Main keep-alive loop ---
+    printf("[PAYLOAD] Main loop active (press END to exit)\n"); fflush(stdout);
+    MessageBoxA(NULL, "Step 6: Main loop. Press END to detach.", "Debug", MB_OK);
+
+    while (!GetAsyncKeyState(VK_END)) {
+        Sleep(100);
+    }
+
+    // --- Clean shutdown ---
+    printf("[PAYLOAD] Detaching from JVM...\n"); fflush(stdout);
+    MessageBoxA(NULL, "Step 7: Detaching...", "Debug", MB_OK);
 
     jint detach_rc = vm->functions->DetachCurrentThread(&vm);
-    printf("[PAYLOAD] DetachCurrentThread rc=%d\n", (int)detach_rc);
+    printf("[PAYLOAD] DetachCurrentThread rc=%d\n", (int)detach_rc); fflush(stdout);
 
-    MessageBoxA(NULL, "Payload thread exiting cleanly", "Debug", MB_OK);
+    MessageBoxA(NULL, "Safely detached. Thread exiting cleanly.", "Debug", MB_OK);
     fflush(stdout);
     return 0;
 }
