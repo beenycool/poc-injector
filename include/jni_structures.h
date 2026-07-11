@@ -634,9 +634,10 @@ struct JNINativeInterface_ {
     JNI_GetModule_t                     GetModule;
 };
 
-// JNIEnv_ — opaque struct whose first members match JNINativeInterface_
-// HotSpot stores the function table directly at offset 0.
-struct JNIEnv_ : JNINativeInterface_ {
+// JNIEnv_ — HotSpot stores a pointer to JNINativeInterface_ at offset 0x00.
+// AttachCurrentThread returns env = JavaThread + 0x2C0, where *env = fn table ptr.
+struct JNIEnv_ {
+    const JNINativeInterface_* functions;                    // 0x00
 };
 
 // ---------------------------------------------------------------------------
