@@ -241,6 +241,113 @@ static DWORD WINAPI payload_thread(LPVOID /*param*/) {
         MessageBoxA(NULL, "Test 5: Minecraft class not found", "Debug", MB_OK);
     }
 
+    // --- Test 6: Context class loader approach ---
+    log_debug("Test 6: Finding Minecraft via class loaders...");
+    MessageBoxA(NULL, "Test 6: Class loader approach", "Debug", MB_OK);
+
+    {
+        jclass threadClass = nullptr;
+        jclass classLoaderClass = nullptr;
+        SEH_TRY {
+            threadClass = env->functions->FindClass(env, "java/lang/Thread");
+            classLoaderClass = env->functions->FindClass(env, "java/lang/ClassLoader");
+        } SEH_EXCEPT(code) {
+            code = GetExceptionCode();
+            log_debug("CRASH Test 6a: FindClass! Code=0x%08X", code);
+        }
+
+        jobject chosenLoader = nullptr;
+        const char* loaderName = nullptr;
+
+        if (threadClass && classLoaderClass) {
+            // --- Try context class loader from current thread ---
+            jmethodID currentThreadMid = env->functions->GetStaticMethodID(env, threadClass, "currentThread", "()Ljava/lang/Thread;");
+            jmethodID getContextClassLoaderMid = env->functions->GetMethodID(env, threadClass, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
+
+            if (currentThreadMid && getContextClassLoaderMid) {
+                jobject currentThread = nullptr;
+                SEH_TRY {
+                    currentThread = env->functions->CallStaticObjectMethod(env, threadClass, currentThreadMid);
+                } SEH_EXCEPT(code) {
+                    code = GetExceptionCode();
+                    log_debug("CRASH Test 6b: currentThread! Code=0x%08X", code);
+                }
+
+                if (currentThread) {
+                    jobject ctxLoader = nullptr;
+                    SEH_TRY {
+                        ctxLoader = env->functions->CallObjectMethod(env, currentThread, getContextClassLoaderMid);
+                    } SEH_EXCEPT(code) {
+                        code = GetExceptionCode();
+                        log_debug("CRASH Test 6c: getContextClassLoader! Code=0x%08X", code);
+                    }
+
+                    log_debug("Test 6: contextClassLoader = 0x%p", ctxLoader);
+                    if (ctxLoader) {
+                        chosenLoader = ctxLoader;
+                        loaderName = "context";
+                    }
+                    env->functions->DeleteLocalRef(env, (jobject)currentThread);
+                }
+            }
+
+            // --- Fallback: try system class loader ---
+            if (!chosenLoader) {
+                log_debug("Test 6: trying system class loader as fallback");
+                jmethodID getSysLoaderMid = env->functions->GetStaticMethodID(env, classLoaderClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
+                if (getSysLoaderMid) {
+                    jobject sysLoader = nullptr;
+                    SEH_TRY {
+                        sysLoader = env->functions->CallStaticObjectMethod(env, classLoaderClass, getSysLoaderMid);
+                    } SEH_EXCEPT(code) {
+                        code = GetExceptionCode();
+                        log_debug("CRASH Test 6d: getSystemClassLoader! Code=0x%08X", code);
+                    }
+                    log_debug("Test 6: systemClassLoader = 0x%p", sysLoader);
+                    if (sysLoader) {
+                        chosenLoader = sysLoader;
+                        loaderName = "system";
+                    }
+                }
+            }
+
+            // --- Try to load Minecraft class ---
+            if (chosenLoader) {
+                jmethodID loadClassMid = env->functions->GetMethodID(env, classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+                if (loadClassMid) {
+                    jstring mcStr = env->functions->NewStringUTF(env, "net.minecraft.client.Minecraft");
+                    if (mcStr) {
+                        jobject mcClass = nullptr;
+                        SEH_TRY {
+                            mcClass = env->functions->CallObjectMethod(env, chosenLoader, loadClassMid, (jobject)mcStr);
+                        } SEH_EXCEPT(code) {
+                            code = GetExceptionCode();
+                            log_debug("CRASH Test 6e: loadClass! Code=0x%08X", code);
+                        }
+
+                        log_debug("Test 6: %s.loadClass(Minecraft) = 0x%p", loaderName, mcClass);
+                        if (mcClass) {
+                            log_debug("Test 6: FOUND Minecraft class via %s class loader!", loaderName);
+                            snprintf(buf, sizeof(buf), "Test 6: FOUND! loader=%s", loaderName);
+                            MessageBoxA(NULL, buf, "Debug", MB_OK);
+                        } else {
+                            if (env->functions->ExceptionCheck(env)) {
+                                env->functions->ExceptionClear(env);
+                                log_debug("Test 6: loadClass threw ClassNotFoundException (cleared)");
+                            }
+                        }
+                        env->functions->DeleteLocalRef(env, (jobject)mcStr);
+                        if (mcClass) env->functions->DeleteLocalRef(env, (jobject)mcClass);
+                    }
+                }
+                env->functions->DeleteLocalRef(env, (jobject)chosenLoader);
+            }
+
+            env->functions->DeleteLocalRef(env, (jobject)threadClass);
+            env->functions->DeleteLocalRef(env, (jobject)classLoaderClass);
+        }
+    }
+
     // --- Summary ---
     log_debug("=== JNI Test Summary ===");
     log_debug("  GetVersion          = 0x%08X (%s)", (unsigned)jni_ver, jni_ver ? "OK" : "FAIL");
