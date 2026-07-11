@@ -1,5 +1,15 @@
 #pragma once
 #include <windows.h>
+
+#ifdef _MSC_VER
+
+// MSVC: native SEH — maps directly to __try/__except
+#define SEH_TRY __try
+#define SEH_EXCEPT(code_var) __except((code_var) = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+
+#else
+
+// MinGW: VEH + setjmp/longjmp fallback
 #include <setjmp.h>
 
 extern "C" {
@@ -33,3 +43,5 @@ inline LONG WINAPI SehCompatHandler(struct _EXCEPTION_POINTERS* ep) {
         code_var = _seh_data.code; \
         RemoveVectoredExceptionHandler(_seh_h); \
         g_seh_ctx = _seh_old;
+
+#endif
