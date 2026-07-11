@@ -36,4 +36,4 @@ jobs:
           name: mcinjector
           path: |
             build/injector/Release/mcinjector.exe
-            build/payload/Release/mcpayload.dll
+            build/injector/Release/mcpayload.dll
