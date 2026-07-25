@@ -1,0 +1,27 @@
+# Exclude the Ghidra analysis workspace (separate project)
+ghidra-mcp/
+
+# Runtime binaries (jvm.dll, server jars, etc.)
+bin/
+
+# Build output
+build/
+cmake-build-*/
+out/
+
+# Compiled artifacts
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# IDE junk
+.vs/
+.vscode/
+*.sln
+*.suo
+*.user
+*.vcxproj*
