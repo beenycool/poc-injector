@@ -1,8 +1,17 @@
 #include <cstdio>
 #include <string>
 #include <optional>
+#include <vector>
 #include "target.hpp"
 #include "error.hpp"
+
+#ifdef __APPLE__
+#include <libproc.h>
+#elif defined(_WIN32)
+#define NOMINMAX
+#include <windows.h>
+#include <tlhelp32.h>
+#endif
 
 namespace inject {
 
@@ -11,8 +20,6 @@ namespace inject {
 // =========================================================================
 // macOS: process discovery via libproc
 // =========================================================================
-#include <libproc.h>
-#include <vector>
 
 std::optional<find_target_result> find_process_by_name(
     const std::string& target_exe_name)
@@ -56,9 +63,6 @@ std::optional<find_target_result> find_process_by_name(
 // =========================================================================
 // Windows: process discovery via Toolhelp32
 // =========================================================================
-#define NOMINMAX
-#include <windows.h>
-#include <tlhelp32.h>
 
 std::optional<find_target_result> find_process_by_name(
     const std::string& target_exe_name)

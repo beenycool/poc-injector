@@ -1,6 +1,13 @@
 #include "inject.hpp"
 #include "error.hpp"
 #include <cstdio>
+#include <cstdlib>
+
+#ifdef __APPLE__
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#endif
 
 namespace inject {
 
@@ -14,10 +21,6 @@ namespace inject {
 // DYLD_INSERT_LIBRARIES environment variable. The dylib's
 // __attribute__((constructor)) runs automatically at load time.
 // =========================================================================
-#include <unistd.h>
-#include <cstdlib>
-#include <sys/wait.h>
-#include <sys/stat.h>
 
 static bool file_exists(const char* path) {
     struct stat st;
