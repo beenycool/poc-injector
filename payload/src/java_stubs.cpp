@@ -333,8 +333,7 @@ static jclass findClassWithClassLoader(JNIEnv env, const char* className) {
     if (cls) return cls;
 
 try_all_threads:
-    // 3. Fallback: scan across all active thread classloaders in the JVM
-    return findClassAcrossAllThreadClassLoaders(env, className);
+    return cls;
 }
 
 // ---------------------------------------------------------------------------
