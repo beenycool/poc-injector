@@ -263,24 +263,47 @@ static CGLError hooked_CGLFlushDrawable(CGLContextObj ctx) {
     return original_CGLFlushDrawable(ctx);
 }
 
+static void (*original_glFlush)(void) = nullptr;
+static void (*original_glFinish)(void) = nullptr;
+static CGLError (*original_CGLClearDrawable)(CGLContextObj) = nullptr;
+
+static void hooked_glFlush(void) {
+    CGLContextObj ctx = CGLGetCurrentContext();
+    if (ctx) hooked_CGLFlushDrawable(ctx);
+    if (original_glFlush) original_glFlush();
+}
+
+static void hooked_glFinish(void) {
+    CGLContextObj ctx = CGLGetCurrentContext();
+    if (ctx) hooked_CGLFlushDrawable(ctx);
+    if (original_glFinish) original_glFinish();
+}
+
+static CGLError hooked_CGLClearDrawable(CGLContextObj ctx) {
+    if (ctx) hooked_CGLFlushDrawable(ctx);
+    return original_CGLClearDrawable ? original_CGLClearDrawable(ctx) : kCGLNoError;
+}
+
 //============================================================================
 // Public API
 //============================================================================
 bool overlay_init() {
-    OVERLAY_LOG("overlay_init entered (macOS fishhook mode)");
+    OVERLAY_LOG("overlay_init entered (macOS multi-symbol hook mode)");
 
-    // Install fishhook on CGLFlushDrawable
+    // Install fishhook on CGLFlushDrawable, CGLClearDrawable, glFlush, glFinish
     struct rebinding rebindings[] = {
-        {"CGLFlushDrawable", (void*)hooked_CGLFlushDrawable,
-         (void**)&original_CGLFlushDrawable}
+        {"CGLFlushDrawable", (void*)hooked_CGLFlushDrawable, (void**)&original_CGLFlushDrawable},
+        {"CGLClearDrawable", (void*)hooked_CGLClearDrawable, (void**)&original_CGLClearDrawable},
+        {"glFlush",          (void*)hooked_glFlush,          (void**)&original_glFlush},
+        {"glFinish",         (void*)hooked_glFinish,         (void**)&original_glFinish}
     };
-    int result = rebind_symbols(rebindings, 1);
+    int result = rebind_symbols(rebindings, 4);
     if (result != 0) {
         OVERLAY_LOG_ERR("fishhook rebind_symbols failed (result=%d)", result);
         return false;
     }
 
-    OVERLAY_LOG("Hook installed on CGLFlushDrawable via fishhook");
+    OVERLAY_LOG("Hooks installed on CGLFlushDrawable, CGLClearDrawable, glFlush, glFinish via fishhook");
     return true;
 }
 
