@@ -22,6 +22,10 @@
 #include "backends/imgui_impl_opengl3.h"
 #include "backends/imgui_impl_osx.h"
 
+#ifdef __OBJC__
+IMGUI_IMPL_API bool ImGui_ImplOSX_HandleEvent(NSEvent* _Nonnull event, NSView* _Nullable view);
+#endif
+
 #include "shared_state.h"
 #include "gui.h"
 #include "overlay.h"
@@ -106,9 +110,6 @@ static CGLError hooked_CGLFlushDrawable(CGLContextObj ctx) {
                 OVERLAY_LOG("NSOpenGLContext view is nil, passing through");
                 return original_CGLFlushDrawable(ctx);
             }
-
-            // Retain the view so it doesn't get deallocated
-            [g_ol.nsView retain];
 
             NSWindow* window = [g_ol.nsView window];
             if (window) {
@@ -286,9 +287,8 @@ void overlay_shutdown() {
         rebind_symbols(rebindings, 1);
     }
 
-    // Release the view
+    // Reset the view
     if (g_ol.nsView) {
-        [g_ol.nsView release];
         g_ol.nsView = nil;
     }
 
