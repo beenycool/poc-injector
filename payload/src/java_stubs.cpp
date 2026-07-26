@@ -166,10 +166,113 @@ cleanup:
     return result;
 }
 
-// Helper: try FindClass, then fallback to Thread.currentThread().getContextClassLoader().loadClass(...)
+// Helper: Query Thread.getAllStackTraces().keySet() to inspect ALL active threads
+// in the JVM and try loading className via each thread's ContextClassLoader.
+static jclass findClassAcrossAllThreadClassLoaders(JNIEnv env, const char* className) {
+    jclass cls = nullptr;
+    seh_code_t code;
+
+    jclass threadClass = nullptr;
+    jclass setClass = nullptr;
+    jclass classLoaderClass = nullptr;
+    jclass iteratorClass = nullptr;
+
+    jmethodID getAllStackTracesMid = nullptr;
+    jmethodID keySetMid = nullptr;
+    jmethodID iteratorMid = nullptr;
+    jmethodID hasNextMid = nullptr;
+    jmethodID nextMid = nullptr;
+    jmethodID getContextClassLoaderMid = nullptr;
+    jmethodID loadClassMid = nullptr;
+
+    jobject tracesMap = nullptr;
+    jobject threadSet = nullptr;
+    jobject iterator = nullptr;
+    jstring nameStr = nullptr;
+
+    SEH_TRY {
+        threadClass      = env->functions->FindClass(env, "java/lang/Thread");
+        setClass        = env->functions->FindClass(env, "java/util/Set");
+        classLoaderClass = env->functions->FindClass(env, "java/lang/ClassLoader");
+        iteratorClass    = env->functions->FindClass(env, "java/util/Iterator");
+    } SEH_EXCEPT(code) {}
+    if (!threadClass || !setClass || !classLoaderClass || !iteratorClass) goto done;
+
+    SEH_TRY {
+        getAllStackTracesMid    = env->functions->GetStaticMethodID(env, threadClass, "getAllStackTraces", "()Ljava/util/Map;");
+        jclass mapClass          = env->functions->FindClass(env, "java/util/Map");
+        if (mapClass) {
+            keySetMid            = env->functions->GetMethodID(env, mapClass, "keySet", "()Ljava/util/Set;");
+            env->functions->DeleteLocalRef(env, (jobject)mapClass);
+        }
+        iteratorMid              = env->functions->GetMethodID(env, setClass, "iterator", "()Ljava/util/Iterator;");
+        hasNextMid               = env->functions->GetMethodID(env, iteratorClass, "hasNext", "()Z");
+        nextMid                  = env->functions->GetMethodID(env, iteratorClass, "next", "()Ljava/lang/Object;");
+        getContextClassLoaderMid = env->functions->GetMethodID(env, threadClass, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
+        loadClassMid             = env->functions->GetMethodID(env, classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    } SEH_EXCEPT(code) {}
+    if (!getAllStackTracesMid || !keySetMid || !iteratorMid || !hasNextMid || !nextMid || !getContextClassLoaderMid || !loadClassMid) goto done;
+
+    SEH_TRY {
+        tracesMap = env->functions->CallStaticObjectMethod(env, threadClass, getAllStackTracesMid);
+        if (tracesMap) {
+            threadSet = env->functions->CallObjectMethod(env, tracesMap, keySetMid);
+        }
+        if (threadSet) {
+            iterator = env->functions->CallObjectMethod(env, threadSet, iteratorMid);
+        }
+        if (iterator) {
+            char dotName[256];
+            strncpy(dotName, className, sizeof(dotName) - 1);
+            dotName[sizeof(dotName) - 1] = '\0';
+            for (char* p = dotName; *p; p++) {
+                if (*p == '/') *p = '.';
+            }
+            nameStr = env->functions->NewStringUTF(env, dotName);
+
+            while (env->functions->CallBooleanMethod(env, iterator, hasNextMid)) {
+                jobject threadObj = env->functions->CallObjectMethod(env, iterator, nextMid);
+                if (threadObj) {
+                    jobject loaderObj = env->functions->CallObjectMethod(env, threadObj, getContextClassLoaderMid);
+                    if (loaderObj) {
+                        SEH_TRY {
+                            cls = (jclass)env->functions->CallObjectMethod(env, loaderObj, loadClassMid, nameStr);
+                        } SEH_EXCEPT(code) {}
+                        if (env->functions->ExceptionCheck(env))
+                            env->functions->ExceptionClear(env);
+
+                        env->functions->DeleteLocalRef(env, loaderObj);
+                        if (cls) {
+                            env->functions->DeleteLocalRef(env, threadObj);
+                            break;
+                        }
+                    }
+                    env->functions->DeleteLocalRef(env, threadObj);
+                }
+            }
+        }
+    } SEH_EXCEPT(code) {}
+    if (env->functions->ExceptionCheck(env))
+        env->functions->ExceptionClear(env);
+
+done:
+    if (nameStr)          env->functions->DeleteLocalRef(env, nameStr);
+    if (iterator)         env->functions->DeleteLocalRef(env, iterator);
+    if (threadSet)        env->functions->DeleteLocalRef(env, threadSet);
+    if (tracesMap)        env->functions->DeleteLocalRef(env, tracesMap);
+    if (threadClass)      env->functions->DeleteLocalRef(env, (jobject)threadClass);
+    if (setClass)         env->functions->DeleteLocalRef(env, (jobject)setClass);
+    if (classLoaderClass) env->functions->DeleteLocalRef(env, (jobject)classLoaderClass);
+    if (iteratorClass)    env->functions->DeleteLocalRef(env, (jobject)iteratorClass);
+    return cls;
+}
+
+// Helper: try FindClass, current thread context classloader, and all active thread classloaders
 static jclass findClassWithClassLoader(JNIEnv env, const char* className) {
     jclass cls = nullptr;
     seh_code_t code;
+
+    // 1. Try standard env->FindClass
     SEH_TRY {
         cls = env->functions->FindClass(env, className);
     } SEH_EXCEPT(code) {}
@@ -177,6 +280,7 @@ static jclass findClassWithClassLoader(JNIEnv env, const char* className) {
         env->functions->ExceptionClear(env);
     if (cls) return cls;
 
+    // 2. Try current thread context class loader
     jclass threadClass = nullptr;
     jclass classLoaderClass = nullptr;
     jmethodID currentThreadMid = nullptr;
@@ -190,14 +294,14 @@ static jclass findClassWithClassLoader(JNIEnv env, const char* className) {
         threadClass = env->functions->FindClass(env, "java/lang/Thread");
         classLoaderClass = env->functions->FindClass(env, "java/lang/ClassLoader");
     } SEH_EXCEPT(code) {}
-    if (!threadClass || !classLoaderClass) goto done;
+    if (!threadClass || !classLoaderClass) goto try_all_threads;
 
     SEH_TRY {
         currentThreadMid = env->functions->GetStaticMethodID(env, threadClass, "currentThread", "()Ljava/lang/Thread;");
         getContextClassLoaderMid = env->functions->GetMethodID(env, threadClass, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
         loadClassMid = env->functions->GetMethodID(env, classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
     } SEH_EXCEPT(code) {}
-    if (!currentThreadMid || !getContextClassLoaderMid || !loadClassMid) goto done;
+    if (!currentThreadMid || !getContextClassLoaderMid || !loadClassMid) goto try_all_threads;
 
     SEH_TRY {
         currentThread = env->functions->CallStaticObjectMethod(env, threadClass, currentThreadMid);
@@ -220,13 +324,17 @@ static jclass findClassWithClassLoader(JNIEnv env, const char* className) {
     if (env->functions->ExceptionCheck(env))
         env->functions->ExceptionClear(env);
 
-done:
     if (nameStr) env->functions->DeleteLocalRef(env, nameStr);
     if (contextClassLoader) env->functions->DeleteLocalRef(env, contextClassLoader);
     if (currentThread) env->functions->DeleteLocalRef(env, currentThread);
     if (threadClass) env->functions->DeleteLocalRef(env, (jobject)threadClass);
     if (classLoaderClass) env->functions->DeleteLocalRef(env, (jobject)classLoaderClass);
-    return cls;
+
+    if (cls) return cls;
+
+try_all_threads:
+    // 3. Fallback: scan across all active thread classloaders in the JVM
+    return findClassAcrossAllThreadClassLoaders(env, className);
 }
 
 // ---------------------------------------------------------------------------
