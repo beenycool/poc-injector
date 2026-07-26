@@ -386,53 +386,15 @@ static DWORD WINAPI payload_thread(LPVOID) {
     JNIEnv env = att.get();
     g_log.log("AttachCurrentThread SUCCESS, JNIEnv* = 0x%p", env);
 
-    // Stage 4: Initialize JNI stubs (one-shot class/field resolution)
-    if (!g_jni.init(env, jni_log_callback)) {
-        g_log.log("FATAL: JNI stubs initialization failed");
-#ifdef __APPLE__
-        return nullptr;
-#else
-        return 1;
-#endif
-    }
-
-    // Stage 5: Grab the static Minecraft singleton
-    jobject mcLocal = nullptr;
-    int mcRetries = 0;
-    while (!mcLocal && mcRetries < 300) {
-        seh_code_t code;
-        mcLocal = sehGetStaticObjectField(env, g_jni.minecraftClass, g_jni.theMinecraft_fid, code);
-        if (code) g_log.log("CRASH GetStaticObjectField(mc): code=0x%08X", code);
-        clear_jni_exception(env);
-        if (!mcLocal) {
-#ifdef __APPLE__
-            usleep(100 * 1000);
-#else
-            Sleep(100);
-#endif
-            mcRetries++;
-        }
-    }
-    if (!mcLocal) {
-        g_log.log("FATAL: Minecraft singleton not available after %d retries", mcRetries);
-#ifdef __APPLE__
-        return nullptr;
-#else
-        return 1;
-#endif
-    }
-    g_log.log("Minecraft singleton acquired (retries=%d)", mcRetries);
-
-    auto g_minecraft = std::make_unique<Minecraft>(env, mcLocal);
-    // mcLocal consumed by Minecraft constructor (DeleteLocalRef)
-
-    // Stage 6: Init shared state + window + overlay
+    // Stage 4: Init shared state + window + overlay (ensures ImGui GUI is active immediately)
     state_init();
 
 #ifdef __APPLE__
     // macOS: overlay discovers the GL context from inside the hook
     if (!overlay_init()) {
         g_log.log("Overlay init failed — continuing without GUI");
+    } else {
+        g_log.log("Overlay init succeeded (fishhook CGLFlushDrawable registered)");
     }
 #else
     HWND mcHwnd = FindWindowA("LWJGL", nullptr);
@@ -468,6 +430,38 @@ static DWORD WINAPI payload_thread(LPVOID) {
     }
 #endif
 
+    // Stage 5: Initialize JNI stubs (retryable if Minecraft class hasn't finished loading)
+    bool jniReady = g_jni.init(env, jni_log_callback);
+    if (!jniReady) {
+        g_log.log("JNI stubs initial attempt deferred — retrying in background loop");
+    }
+
+    // Stage 6: Grab the static Minecraft singleton (if JNI ready)
+    jobject mcLocal = nullptr;
+    int mcRetries = 0;
+    std::unique_ptr<Minecraft> g_minecraft = nullptr;
+
+    if (jniReady) {
+        while (!mcLocal && mcRetries < 50) {
+            seh_code_t code;
+            mcLocal = sehGetStaticObjectField(env, g_jni.minecraftClass, g_jni.theMinecraft_fid, code);
+            if (code) g_log.log("CRASH GetStaticObjectField(mc): code=0x%08X", code);
+            clear_jni_exception(env);
+            if (!mcLocal) {
+#ifdef __APPLE__
+                usleep(100 * 1000);
+#else
+                Sleep(100);
+#endif
+                mcRetries++;
+            }
+        }
+        if (mcLocal) {
+            g_log.log("Minecraft singleton acquired (retries=%d)", mcRetries);
+            g_minecraft = std::make_unique<Minecraft>(env, mcLocal);
+        }
+    }
+
     // Stage 7: Main loop — update state at ~60fps, defer player discovery
     {
 #ifdef __APPLE__
@@ -477,25 +471,48 @@ static DWORD WINAPI payload_thread(LPVOID) {
 #endif
         bool canPoll = false;
         int retryCount = 0;
+        int loopCount = 0;
         const int MAX_RETRIES = 600;
 
+        g_log.log("Entering payload main loop...");
+
         while (true) {
+            loopCount++;
+            if (loopCount % 300 == 0) {
+                g_log.log("Main loop active (loop %d, canPoll=%d, retryCount=%d)",
+                          loopCount, (int)canPoll, retryCount);
+            }
+
             // Check shutdown
             bool running = false;
             state_lock();
             running = g_state.running;
             state_unlock();
-            if (!running) break;
+            if (!running) {
+                g_log.log("g_state.running is false — breaking main loop");
+                break;
+            }
 
 #ifdef __APPLE__
-            if (g_shutdown_flag) break;
+            if (g_shutdown_flag) {
+                g_log.log("g_shutdown_flag set — breaking main loop");
+                break;
+            }
 #else
             DWORD wr = WaitForSingleObject(ev, 0);
             if (wr == WAIT_OBJECT_0) break;
 #endif
 
+            // If JNI stubs were deferred, retry initializing JNI stubs
+            if (!g_jni.minecraftClass && retryCount < MAX_RETRIES) {
+                retryCount++;
+                if (g_jni.init(env, jni_log_callback)) {
+                    g_log.log("JNI stubs initialized successfully on retry %d!", retryCount);
+                }
+            }
+
             // If we have a valid player object, poll position
-            if (canPoll) {
+            if (canPoll && g_minecraft) {
                 update_shared_state(*g_minecraft);
             }
             // If thePlayer field ID was resolved but player isn't ready yet,

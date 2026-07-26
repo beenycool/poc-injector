@@ -166,6 +166,69 @@ cleanup:
     return result;
 }
 
+// Helper: try FindClass, then fallback to Thread.currentThread().getContextClassLoader().loadClass(...)
+static jclass findClassWithClassLoader(JNIEnv env, const char* className) {
+    jclass cls = nullptr;
+    seh_code_t code;
+    SEH_TRY {
+        cls = env->functions->FindClass(env, className);
+    } SEH_EXCEPT(code) {}
+    if (env->functions->ExceptionCheck(env))
+        env->functions->ExceptionClear(env);
+    if (cls) return cls;
+
+    jclass threadClass = nullptr;
+    jclass classLoaderClass = nullptr;
+    jmethodID currentThreadMid = nullptr;
+    jmethodID getContextClassLoaderMid = nullptr;
+    jmethodID loadClassMid = nullptr;
+    jobject currentThread = nullptr;
+    jobject contextClassLoader = nullptr;
+    jstring nameStr = nullptr;
+
+    SEH_TRY {
+        threadClass = env->functions->FindClass(env, "java/lang/Thread");
+        classLoaderClass = env->functions->FindClass(env, "java/lang/ClassLoader");
+    } SEH_EXCEPT(code) {}
+    if (!threadClass || !classLoaderClass) goto done;
+
+    SEH_TRY {
+        currentThreadMid = env->functions->GetStaticMethodID(env, threadClass, "currentThread", "()Ljava/lang/Thread;");
+        getContextClassLoaderMid = env->functions->GetMethodID(env, threadClass, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
+        loadClassMid = env->functions->GetMethodID(env, classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    } SEH_EXCEPT(code) {}
+    if (!currentThreadMid || !getContextClassLoaderMid || !loadClassMid) goto done;
+
+    SEH_TRY {
+        currentThread = env->functions->CallStaticObjectMethod(env, threadClass, currentThreadMid);
+        if (currentThread) {
+            contextClassLoader = env->functions->CallObjectMethod(env, currentThread, getContextClassLoaderMid);
+        }
+        if (contextClassLoader) {
+            char dotName[256];
+            strncpy(dotName, className, sizeof(dotName) - 1);
+            dotName[sizeof(dotName) - 1] = '\0';
+            for (char* p = dotName; *p; p++) {
+                if (*p == '/') *p = '.';
+            }
+            nameStr = env->functions->NewStringUTF(env, dotName);
+            if (nameStr) {
+                cls = (jclass)env->functions->CallObjectMethod(env, contextClassLoader, loadClassMid, nameStr);
+            }
+        }
+    } SEH_EXCEPT(code) {}
+    if (env->functions->ExceptionCheck(env))
+        env->functions->ExceptionClear(env);
+
+done:
+    if (nameStr) env->functions->DeleteLocalRef(env, nameStr);
+    if (contextClassLoader) env->functions->DeleteLocalRef(env, contextClassLoader);
+    if (currentThread) env->functions->DeleteLocalRef(env, currentThread);
+    if (threadClass) env->functions->DeleteLocalRef(env, (jobject)threadClass);
+    if (classLoaderClass) env->functions->DeleteLocalRef(env, (jobject)classLoaderClass);
+    return cls;
+}
+
 // ---------------------------------------------------------------------------
 // JniContext::init — resolves all classes and field IDs.
 // Called once during payload init.
@@ -174,17 +237,18 @@ bool JniContext::init(JNIEnv env, JniLogFn log_fn) {
     log = log_fn;
     seh_code_t code;
 
-    // -- 1. Find Minecraft class (try various names) --
+    // -- 1. Find Minecraft class (try various names & custom classloaders) --
     const char* mcNames[] = {
-        "net.minecraft.client.Minecraft",
-        "net.minecraft.v1_8.Minecraft",
-        "net.minecraft.v1_7.Minecraft"
+        "net/minecraft/client/Minecraft",
+        "net/minecraft/v1_8/Minecraft",
+        "net/minecraft/v1_7/Minecraft",
+        "net.minecraft.client.Minecraft"
     };
     const char* foundMcName = nullptr;
 
     for (auto name : mcNames) {
         SEH_TRY {
-            minecraftClass = env->functions->FindClass(env, name);
+            minecraftClass = findClassWithClassLoader(env, name);
         } SEH_EXCEPT(code) {
             JNI_LOG("CRASH FindClass(%s): code=0x%08X", name, code);
         }
@@ -198,7 +262,7 @@ bool JniContext::init(JNIEnv env, JniLogFn log_fn) {
     }
 
     if (!minecraftClass) {
-        JNI_LOG("FATAL: Could not find Minecraft class");
+        JNI_LOG("WARN: Could not find Minecraft class yet");
         return false;
     }
 

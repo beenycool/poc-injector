@@ -25,3 +25,8 @@ out/
 *.suo
 *.user
 *.vcxproj*
+
+# Lunar Client runtime junk
+.ichor/
+default/
+

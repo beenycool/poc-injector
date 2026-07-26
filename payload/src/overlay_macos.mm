@@ -50,6 +50,15 @@ static OverlayState g_ol;
                       ##__VA_ARGS__);                                   \
     if (_n > 0) {                                                       \
         fprintf(stderr, "%s", _buf); fflush(stderr);                    \
+        const char* _home = getenv("HOME");                             \
+        if (_home && _home[0]) {                                        \
+            char _p[512];                                               \
+            snprintf(_p, sizeof(_p), "%s/Downloads/mcpayload_debug.log", _home); \
+            FILE* _f = fopen(_p, "a");                                  \
+            if (_f) { fputs(_buf, _f); fclose(_f); }                    \
+        }                                                               \
+        FILE* _tmpf = fopen("/tmp/mcpayload_debug.log", "a");           \
+        if (_tmpf) { fputs(_buf, _tmpf); fclose(_tmpf); }               \
     }                                                                   \
 } while(0)
 
@@ -59,6 +68,15 @@ static OverlayState g_ol;
                       ##__VA_ARGS__);                                   \
     if (_n > 0) {                                                       \
         fprintf(stderr, "%s", _buf); fflush(stderr);                    \
+        const char* _home = getenv("HOME");                             \
+        if (_home && _home[0]) {                                        \
+            char _p[512];                                               \
+            snprintf(_p, sizeof(_p), "%s/Downloads/mcpayload_debug.log", _home); \
+            FILE* _f = fopen(_p, "a");                                  \
+            if (_f) { fputs(_buf, _f); fclose(_f); }                    \
+        }                                                               \
+        FILE* _tmpf = fopen("/tmp/mcpayload_debug.log", "a");           \
+        if (_tmpf) { fputs(_buf, _tmpf); fclose(_tmpf); }               \
     }                                                                   \
 } while(0)
 
@@ -212,8 +230,8 @@ static CGLError hooked_CGLFlushDrawable(CGLContextObj ctx) {
     {
         static int frame_count = 0;
         frame_count++;
-        if (frame_count % 300 == 0) {
-            OVERLAY_LOG("Frame %d: menuOpen=%d", frame_count,
+        if (frame_count == 1 || frame_count % 60 == 0) {
+            OVERLAY_LOG("CGLFlushDrawable frame %d | menuOpen=%d", frame_count,
                         (int)g_state.menuOpen);
         }
     }
