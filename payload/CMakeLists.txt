@@ -27,8 +27,8 @@ if(APPLE)
     # fishhook doesn't have a CMakeLists.txt, so we fetch and compile directly
     FetchContent_Declare(
         fishhook
-        GIT_REPOSITORY  https://github.com/nicklockwood/fishhook.git
-        GIT_TAG         0.3
+        GIT_REPOSITORY  https://github.com/facebook/fishhook.git
+        GIT_TAG         0.2
     )
     FetchContent_GetProperties(fishhook)
     if(NOT fishhook_POPULATED)
