@@ -203,7 +203,7 @@ bool JniContext::init(JNIEnv env, JniLogFn log_fn) {
     }
 
     // Promote to global ref
-    SEH_TRY { minecraftClass = (jclass)env->functions->NewGlobalRef(env, minecraftClass); }
+    SEH_TRY { minecraftClass = (jclass)env->functions->NewGlobalRef(env, (jobject)minecraftClass); }
     SEH_EXCEPT(code) {
         JNI_LOG("CRASH NewGlobalRef(mcClass): code=0x%08X", code);
         minecraftClass = nullptr;
@@ -263,7 +263,7 @@ bool JniContext::init(JNIEnv env, JniLogFn log_fn) {
 
     if (entityPlayerSPClass) {
         SEH_TRY {
-            entityPlayerSPClass = (jclass)env->functions->NewGlobalRef(env, entityPlayerSPClass);
+            entityPlayerSPClass = (jclass)env->functions->NewGlobalRef(env, (jobject)entityPlayerSPClass);
         } SEH_EXCEPT(code) {
             entityPlayerSPClass = nullptr;
         }
@@ -329,11 +329,11 @@ bool JniContext::resolvePosFields(JNIEnv env, jobject playerObj) {
 // ---------------------------------------------------------------------------
 void JniContext::cleanup(JNIEnv env) {
     if (minecraftClass) {
-        env->functions->DeleteGlobalRef(env, minecraftClass);
+        env->functions->DeleteGlobalRef(env, (jobject)minecraftClass);
         minecraftClass = nullptr;
     }
     if (entityPlayerSPClass) {
-        env->functions->DeleteGlobalRef(env, entityPlayerSPClass);
+        env->functions->DeleteGlobalRef(env, (jobject)entityPlayerSPClass);
         entityPlayerSPClass = nullptr;
     }
     theMinecraft_fid = nullptr;

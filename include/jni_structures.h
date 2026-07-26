@@ -49,13 +49,13 @@ typedef JNIEnv_*  JNIEnv;
 typedef JavaVM_*  JavaVM;
 
 // --- Forward declares for opaque JNI reference types ---
-struct _jobject;
-struct _jclass;
-struct _jmethodID;
-struct _jfieldID;
-struct _jthrowable;
-struct _jstring;
-struct _jarray;
+struct _jobject {};
+struct _jclass : _jobject {};
+struct _jthrowable : _jobject {};
+struct _jstring : _jobject {};
+struct _jarray : _jobject {};
+struct _jmethodID {};
+struct _jfieldID {};
 
 typedef _jobject*    jobject;
 typedef _jclass*     jclass;
