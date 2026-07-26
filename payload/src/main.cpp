@@ -503,9 +503,10 @@ static DWORD WINAPI payload_thread(LPVOID) {
             if (wr == WAIT_OBJECT_0) break;
 #endif
 
-            // If JNI stubs were deferred, retry initializing JNI stubs
-            if (!g_jni.minecraftClass && retryCount < MAX_RETRIES) {
+            // If JNI stubs were deferred, retry initializing JNI stubs periodically (once every 2s)
+            if (!g_jni.minecraftClass && retryCount < MAX_RETRIES && (loopCount % 120 == 0)) {
                 retryCount++;
+                g_log.log("Retrying JNI stubs init (attempt %d)...", retryCount);
                 if (g_jni.init(env, jni_log_callback)) {
                     g_log.log("JNI stubs initialized successfully on retry %d!", retryCount);
                 }
