@@ -73,6 +73,7 @@ if(APPLE)
         "-framework Cocoa"
         "-framework Carbon"
         "-framework CoreGraphics"
+        "-framework GameController"
         "-framework IOKit"
         "-framework AppKit"
         pthread

@@ -22,10 +22,6 @@
 #include "backends/imgui_impl_opengl3.h"
 #include "backends/imgui_impl_osx.h"
 
-#ifdef __OBJC__
-IMGUI_IMPL_API bool ImGui_ImplOSX_HandleEvent(NSEvent* _Nonnull event, NSView* _Nullable view);
-#endif
-
 #include "shared_state.h"
 #include "gui.h"
 #include "overlay.h"
@@ -167,8 +163,6 @@ static CGLError hooked_CGLFlushDrawable(CGLContextObj ctx) {
                 state_unlock();
 
                 if (isMenuOpen) {
-                    ImGui_ImplOSX_HandleEvent(event, g_ol.nsView);
-
                     // Block keyboard/mouse events from reaching the game
                     if ([event type] == NSEventTypeKeyDown ||
                         [event type] == NSEventTypeKeyUp ||
