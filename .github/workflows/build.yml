@@ -8,36 +8,55 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact-name: mcinjector-windows
+          - os: macos-latest
+            artifact-name: mcinjector-macos
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup MSVC dev command prompt
+      - name: Setup MSVC dev command prompt (Windows)
+        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Cache build directory
-        uses: actions/cache@v4
-        with:
-          path: build
-          key: build-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', '**/CMakeLists.txt', '**/*.cmake') }}
-          restore-keys: |
-            build-${{ runner.os }}-
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-      - name: Configure (CMake)
-        run: cmake -B build -G "Visual Studio 18 2026" -A x64
+      - name: Configure CMake (macOS)
+        if: runner.os == 'macOS'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build (Release)
         run: cmake --build build --config Release --verbose
 
-      - name: Stage launcher script
+      - name: Stage launcher script (Windows)
+        if: runner.os == 'Windows'
         run: copy run.bat build\injector\Release\
 
-      - name: Upload artifacts
+      - name: Upload artifacts (Windows)
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: mcinjector
+          name: ${{ matrix.artifact-name }}
           path: |
             build/injector/Release/mcinjector.exe
             build/injector/Release/mcpayload.dll
             build/injector/Release/run.bat
+
+      - name: Upload artifacts (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: |
+            build/bin/mcinjector
+            build/lib/libmcpayload.dylib
+            run.sh
