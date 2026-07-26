@@ -1,11 +1,18 @@
 # AGENT.md — Developer & AI Agent Context
 
+> [!IMPORTANT]
+> **BUILD RULE**: NEVER build the project locally on developer machines. ALWAYS push changes to GitHub and rely on GitHub Actions (`.github/workflows/build.yml`) to compile binaries for both macOS and Windows.
+>
+> **TARGET ARCHITECTURE**: The primary macOS development and testing environment is an **Apple Silicon Mac (`arm64` CPU)**. GitHub Actions automatically compiles the macOS artifacts on Apple Silicon (`arm64`) runners.
+
+---
+
 ## Project Overview
 
 `poc-injector` is a cross-platform (Windows & macOS) proof-of-concept DLL / dylib injection framework and JNI-based Minecraft payload overlay.
 
 - **Windows Target**: Injects `mcpayload.dll` into `javaw.exe` using `CreateRemoteThread` + `LoadLibraryA`, hooks `wglSwapBuffers` via **MinHook**, and renders an ImGui debug overlay.
-- **macOS Target**: Preloads `libmcpayload.dylib` into a Java process via `DYLD_INSERT_LIBRARIES`, hooks `CGLFlushDrawable` via **fishhook**, and renders an ImGui debug overlay using Cocoa (`NSView`) & OpenGL3.
+- **macOS Target**: Preloads `libmcpayload.dylib` into a Java process via `DYLD_INSERT_LIBRARIES`, hooks `CGLFlushDrawable` via **fishhook**, and renders an ImGui debug overlay using Cocoa (`NSView`) & OpenGL3 on Apple Silicon (`arm64`).
 
 ---
 
@@ -25,7 +32,7 @@
 | OS | Injection Mechanism | Process Discovery | Entry Point |
 |---|---|---|---|
 | **Windows** | 5-step pipeline: `OpenProcess` $\rightarrow$ `VirtualAllocEx` $\rightarrow$ `WriteProcessMemory` $\rightarrow$ `GetProcAddress(LoadLibraryA)` $\rightarrow$ `CreateRemoteThread` | Toolhelp32 API (`CreateToolhelp32Snapshot`, `Process32First`/`Next`) | `BOOL WINAPI DllMain(...)` (`DLL_PROCESS_ATTACH`) |
-| **macOS** | `DYLD_INSERT_LIBRARIES` pre-loading (`fork()` + `execvp()` in launcher or `run.sh`) | `libproc` API (`proc_listallpids()`, `proc_name()`) | `__attribute__((constructor))` static initializer |
+| **macOS (`arm64`)** | `DYLD_INSERT_LIBRARIES` pre-loading (`fork()` + `execvp()` in launcher or `run.sh`) | `libproc` API (`proc_listallpids()`, `proc_name()`) | `__attribute__((constructor))` static initializer |
 
 > **macOS Gotcha**: macOS System Integrity Protection (SIP) automatically strips `DYLD_INSERT_LIBRARIES` when executing binaries under protected system paths (such as `/usr/bin/java`). Users must use a non-Apple-signed third-party JDK (e.g., Homebrew OpenJDK, Adoptium, or Zulu).
 
@@ -33,7 +40,7 @@
 
 ### 2. Graphics Hooking & Overlay Rendering
 
-| Feature | Windows | macOS |
+| Feature | Windows | macOS (`arm64`) |
 |---|---|---|
 | **Hook Library** | MinHook | fishhook (`rebind_symbols`) |
 | **Hooked Symbol** | `wglSwapBuffers` (`opengl32.dll`) | `CGLFlushDrawable` (`OpenGL.framework`) |
@@ -58,28 +65,12 @@
 
 ---
 
-## Build System & CI/CD
+## CI/CD & Build Workflow
 
-### Local Build Commands
-
-```bash
-# macOS Build
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(sysctl -n hw.ncpu)
-
-# Running on macOS
-./run.sh /path/to/Minecraft.jar
-```
-
-```cmd
-:: Windows Build (VS Dev Prompt)
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-```
+> **REMINDER**: Never trigger local compilation commands. All builds are automatically handled by GitHub Actions upon pushing to GitHub.
 
 ### GitHub Actions CI (`.github/workflows/build.yml`)
-- Multi-OS matrix build running on `windows-latest` and `macos-latest`.
+- Multi-OS matrix build running on `windows-latest` and `macos-latest` (Apple Silicon `arm64`).
 - Automatically produces pre-compiled artifacts:
   - `mcinjector-windows` (`mcinjector.exe`, `mcpayload.dll`, `run.bat`)
-  - `mcinjector-macos` (`mcinjector`, `libmcpayload.dylib`, `run.sh`)
+  - `mcinjector-macos` (`mcinjector`, `libmcpayload.dylib`, `run.sh` for ARM64 macOS)
