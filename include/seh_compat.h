@@ -26,6 +26,7 @@
 #include <setjmp.h>
 #include <cstdlib>
 #include <cstdint>
+#include <unistd.h>
 
 struct SehFrame { sigjmp_buf env; int signal_code; };
 static thread_local SehFrame* g_seh_ctx = nullptr;
